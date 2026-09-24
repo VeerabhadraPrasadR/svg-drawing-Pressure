@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import { getStroke } from 'perfect-freehand'
+import { getPointerData } from '../pressure/pointerInput'
 import * as d3 from 'd3'
 
 // @ts-expect-error - no types
@@ -10,6 +11,7 @@ import type { BrushOptions, DrawOptions, Line, SvgReplayOptions } from '../types
 interface Position {
   x: number
   y: number
+  pressure: number
 }
 
 interface Props {
@@ -85,12 +87,21 @@ watch([
   () => props.brushOptions?.disable,
 ], submitSvg, { deep: true })
 
-const onMousedown = (e: MouseEvent) => onDrawStart({ x: e.clientX, y: e.clientY })
-const onMousemove = (e: MouseEvent) => onDraw({ x: e.clientX, y: e.clientY })
-const onMouseup = (_: MouseEvent) => onDrawEnd()
-const onTouchStart = (e: TouchEvent) => onDrawStart({ x: e.touches[0].clientX, y: e.touches[0].clientY })
-const onTouchMove = (e: TouchEvent) => onDraw({ x: e.touches[0].clientX, y: e.touches[0].clientY })
-const onTouchEnd = (_: TouchEvent) => onDrawEnd()
+const onPointerDown = (e: PointerEvent) => {
+  if (!$svg.value)
+    return
+
+  onDrawStart(getPointerData(e, $svg.value))
+}
+
+const onPointerMove = (e: PointerEvent) => {
+  if (!$svg.value)
+    return
+
+  onDraw(getPointerData(e, $svg.value))
+}
+
+const onPointerUp = (_: PointerEvent) => onDrawEnd()
 
 function curve(line: number[][]) {
   const {
@@ -127,7 +138,11 @@ function onDraw(pos: Position) {
     return
   const currentLine = lines.value[lines.value.length - 1]
   const prevPoint = currentLine[currentLine.length - 1]
-  const point = [pos.x - rect.left.value, pos.y - rect.top.value]
+  const point = [
+  pos.x - rect.left.value,
+  pos.y - rect.top.value,
+  pos.pressure,
+]
   if (!prevPoint)
     currentLine.push(point)
   else if (
@@ -284,10 +299,8 @@ function brushworkLine(line: Line) {
   return getStroke(line)
 }
 
-useEventListener('mousemove', onMousemove)
-useEventListener('mouseup', onMouseup)
-useEventListener('touchmove', onTouchMove)
-useEventListener('touchend', onTouchEnd)
+useEventListener('pointermove', onPointerMove)
+useEventListener('pointerup', onPointerUp)
 
 if (props.initialLines?.length)
   submitSvg()
@@ -305,7 +318,12 @@ defineExpose({
 
 <template>
   <div relative full>
-    <svg ref="$svg" relative v-bind="svgAttrs" @mousedown="onMousedown" @touchstart="onTouchStart">
+    <svg
+  ref="$svg"
+  relative
+  v-bind="svgAttrs"
+  @pointerdown="onPointerDown"
+>
       <rect v-bind="bgRectAttrs" />
       <g mask="url(#brush)">
         <path v-for="(p, i) in paths" :key="i" v-bind="p" />
